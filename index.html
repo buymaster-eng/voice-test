@@ -33,6 +33,16 @@ h1{font-size:1.15rem;margin:0}
 <button id="talk" type="button" aria-live="polite">話す</button>
 <p id="status">ボタンを押して話してください</p>
 <p id="interim"></p>
+<details id="help"><summary>理由と直し方（うまく動かない時）</summary>
+<ol class="note">
+<li>iPhone の「設定」→「一般」→「キーボード」→「音声入力」をオン。あわせて「設定」→「Siri」もオンにすると確実です（どちらもオフだと、この機能はマイクの許可を聞く前に止まります）</li>
+<li>「設定」→「アプリ」→「Safari」→「マイク」を「確認」か「許可」に</li>
+<li>このページの左下の「ぁあ」（または「AA」）→「Web サイトの設定」→「マイク」を「許可」に</li>
+<li>LINE やメールの中で開いた時は、右下などの「Safari で開く」で開き直してください（アプリの中の画面ではこの機能が使えません）</li>
+</ol></details>
+<section class="card"><span class="kind">予備：キーボードのマイクで話す（話し終わって2秒たつと自動で送信）</span>
+<input id="kb" type="text" placeholder="ここを押して、キーボードのマイクで話す" autocomplete="off" style="font-size:1rem;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg)">
+</section>
 <div id="log"></div>
 </main>
 <script>
@@ -43,12 +53,12 @@ h1{font-size:1.15rem;margin:0}
   var im = document.getElementById('interim');
   var log = document.getElementById('log');
   var warn = document.getElementById('warn');
-  var tapAt = 0, busy = false;
+  var tapAt = 0, busy = false, lastErr = '';
   var standalone = (window.navigator.standalone === true) || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
   if (!SR) {
     warn.hidden = false;
-    warn.textContent = 'このブラウザでは声の入力が使えません。iPhone は Safari、Android は Chrome で開いてください。';
-    btn.disabled = true; return;
+    warn.textContent = 'このブラウザでは「話す」ボタンが使えません。下の予備（キーボードのマイク）を使うか、iPhone は Safari、Android は Chrome で開いてください。';
+    btn.disabled = true;
   }
   if (standalone) {
     warn.hidden = false;
@@ -102,14 +112,39 @@ h1{font-size:1.15rem;margin:0}
       im.textContent = finalText + interim;
     };
     rec.onerror = function(ev){
-      st.textContent = (ev.error === 'not-allowed') ? 'マイクが許可されていません（設定でマイクを許可してください）' : (ev.error === 'no-speech' ? '声が聞こえませんでした。もう一度どうぞ' : '聞き取れませんでした（' + ev.error + '）');
+      lastErr = ev.error;
+      var m = {
+        'not-allowed': 'マイクが許可されていません。下の「理由と直し方」を見てください',
+        'service-not-allowed': '声の聞き取りの機能が使えない状態です。下の「理由と直し方」を見てください',
+        'no-speech': '声が聞こえませんでした。もう一度どうぞ',
+        'audio-capture': 'マイクが使えませんでした（電話中・他のアプリが使用中など）',
+        'network': '通信がうまくいきませんでした。電波の良い所でもう一度',
+        'aborted': '途中で止まりました。もう一度どうぞ',
+        'language-not-supported': '日本語の聞き取りが使えない設定です'
+      };
+      st.textContent = (m[ev.error] || '聞き取れませんでした') + '（理由の記号：' + ev.error + '）';
+      showHelp(ev.error);
     };
+    rec.onstart_ok = true;
     rec.onend = function(){
       busy = false; btn.classList.remove('listening'); btn.textContent = '話す';
       var t = (finalText || im.textContent || '').trim();
       if (t) { send(t); im.textContent=''; } else if (st.textContent === '話してください') { st.textContent = '声が聞こえませんでした。もう一度どうぞ'; }
     };
     try { rec.start(); } catch(e) { st.textContent = '始められませんでした。もう一度押してください'; }
+  }
+
+  function showHelp(code){ try{ var h=document.getElementById('help'); if(h && (code==='not-allowed'||code==='service-not-allowed'||code==='language-not-supported')) h.open=true; }catch(e){} }
+  var kb = document.getElementById('kb'), kbTimer = null, kbStart = 0;
+  if (kb) {
+    kb.addEventListener('focus', function(){ kbStart = Date.now(); });
+    kb.addEventListener('input', function(){
+      if (kbTimer) clearTimeout(kbTimer);
+      kbTimer = setTimeout(function(){
+        var t = kb.value.trim();
+        if (t) { tapAt = kbStart || Date.now(); send(t); kb.value=''; }
+      }, 2000);
+    });
   }
   btn.addEventListener('click', function(){ tapAt = Date.now(); start(); });
 })();
